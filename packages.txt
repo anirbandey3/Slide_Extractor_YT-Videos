@@ -6,4 +6,4 @@ libglib2.0-0
 libxrender1
 libxext6
 libgl1
-python-opencv
+python3-opencv
