@@ -3,7 +3,6 @@ import os
 import tempfile
 import time
 import logging
-import yt_dlp
 from pathlib import Path
 from PIL import Image
 import shutil
