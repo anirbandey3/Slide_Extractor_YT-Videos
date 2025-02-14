@@ -8,6 +8,15 @@ from pathlib import Path
 from PIL import Image
 import shutil
 from video_processor import VideoProcessor
+import streamlit as st
+import os
+import tempfile
+import time
+import logging
+from pathlib import Path
+from PIL import Image
+import shutil
+from pytube import YouTube
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -56,27 +65,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def download_youtube_video(url):
-    """Download YouTube video using yt-dlp"""
+    """Download YouTube video using pytube"""
     try:
         temp_dir = tempfile.gettempdir()
         temp_path = os.path.join(temp_dir, 'video.mp4')
         
-        ydl_opts = {
-            'format': 'best[ext=mp4]',
-            'outtmpl': temp_path,
-            'quiet': True,
-            'no_warnings': True
-        }
+        # Download using pytube
+        yt = YouTube(url)
+        video = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
+        video.download(filename=temp_path)
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            title = info.get('title', 'video')
-            
-        return temp_path, title
+        return temp_path, yt.title
         
     except Exception as e:
-        logger.error(f"Download error: {str(e)}")
-        raise Exception(f"Failed to download video: {str(e)}")
+        st.error(f"Error downloading video: {str(e)}")
+        return None, None
 
 def main():
     st.title("🎥 YouTube Slide Extractor")
