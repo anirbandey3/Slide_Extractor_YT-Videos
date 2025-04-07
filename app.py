@@ -85,13 +85,6 @@ def is_valid_youtube_url(url):
     except:
         return False
 
-def check_ffmpeg_installation():
-    """Check if FFmpeg is installed and accessible."""
-    try:
-        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-        return True
-    except (subprocess.SubprocessError, FileNotFoundError):
-        return False
 
 def download_youtube_video(url):
     """Download YouTube video using yt-dlp and return both its path and title."""
@@ -117,7 +110,7 @@ def download_youtube_video(url):
         raise Exception(f"Failed to download video: {str(e)}")
 
 def extract_audio_from_video(video_path, audio_output_path=None):
-    """Extracts audio from a video file and saves it as a WAV file."""
+    """Extracts audio using moviepy (ffmpeg still used under-the-hood)"""
     if audio_output_path is None:
         audio_output_path = f"{os.path.splitext(video_path)[0]}_audio.wav"
     
@@ -567,6 +560,7 @@ def create_results_package(output_dir, slides, full_transcription):
     with open(os.path.join(output_dir, "report.html"), "w", encoding="utf-8") as f:
         f.write(html_content)
 
+# Main app function
 def main():
     st.title("🎬 Video Transcriber & Slide Extractor")
     st.markdown("Extract slides and transcriptions from videos")
@@ -574,76 +568,44 @@ def main():
     # Sidebar settings
     with st.sidebar:
         st.header("⚙️ Settings")
-        
-        # Transcription settings
         st.subheader("Transcription Settings")
         whisper_model = st.selectbox(
             "Model Size",
             ["tiny", "base", "small", "medium"],
-            index=3,
-            help="Larger models are more accurate but slower and require more memory"
+            index=3
         )
-        
         use_cuda = False
         if torch.cuda.is_available():
             use_cuda = st.checkbox("Use GPU (CUDA)", value=True)
-        # else:
-        #     st.info("💡 CUDA is not available. CPU will be used for processing.")
-        
-        # Slide extraction settings
+
         st.subheader("Slide Extraction Settings")
         min_percent = st.slider(
             "Minimum Change Percent",
             min_value=0.05,
             max_value=1.0,
             value=0.1,
-            step=0.05,
-            help="Minimum percentage difference to detect if motion has stopped (lower values detect more slides)"
+            step=0.05
         )
         max_percent = st.slider(
             "Maximum Change Percent",
             min_value=1.0,
             max_value=10.0,
             value=3.0,
-            step=0.5,
-            help="Maximum percentage difference to detect if frame is still in motion"
+            step=0.5
         )
 
-    # Check for required dependencies
-    dependencies_ok = True
-    
-    if not check_ffmpeg_installation():
-        st.error("❌ FFmpeg is not installed or not found in system PATH. Please install FFmpeg to use this application.")
-        st.markdown("""
-        ### How to install FFmpeg:
-        1. **Windows**: 
-           - Download from [FFmpeg official website](https://ffmpeg.org/download.html)
-           - Add FFmpeg to system PATH
-        2. **Mac**: 
-           - Use Homebrew: `brew install ffmpeg`
-        3. **Linux**: 
-           - Ubuntu/Debian: `sudo apt install ffmpeg`
-           - Fedora: `sudo dnf install ffmpeg`
-        """)
-        dependencies_ok = False
+    # Removed FFmpeg check block
 
     try:
         import yt_dlp
     except ImportError:
         st.error("❌ yt-dlp is not installed. Please install it using: pip install yt-dlp")
-        dependencies_ok = False
-
-    if not dependencies_ok:
         return
 
-    # Input tabs
     tab1, tab2 = st.tabs(["Upload Video", "YouTube URL"])
-    
+
     with tab1:
-        uploaded_file = st.file_uploader(
-            "Upload a video file (MP4, AVI, MOV, MKV)", 
-            type=["mp4", "avi", "mov", "mkv"]
-        )
+        uploaded_file = st.file_uploader("Upload a video file (MP4, AVI, MOV, MKV)", type=["mp4", "avi", "mov", "mkv"])
         process_upload = uploaded_file is not None
         video_path = None
         if process_upload:
@@ -660,104 +622,77 @@ def main():
         elif process_youtube:
             st.success("✅ Valid YouTube URL")
 
-    # Process button
     if (process_upload or process_youtube) and st.button("🚀 Process Video"):
         try:
             progress_bar = st.progress(0)
             status_text = st.empty()
-            
-            # Handle YouTube download if necessary
+
             video_title = "Uploaded Video"
             if process_youtube:
                 status_text.text("📥 Downloading YouTube video...")
                 video_path, video_title = download_youtube_video(youtube_url)
                 progress_bar.progress(10)
-            
-            # Create output directory
+
             timestamp = int(time.time())
             output_dir = os.path.join("processed_content", str(timestamp))
             os.makedirs(output_dir, exist_ok=True)
-            
-            # Extract audio
+
             status_text.text("🎵 Extracting audio from video...")
             audio_path = extract_audio_from_video(video_path)
             progress_bar.progress(20)
-            
-            # Transcribe audio
+
             status_text.text(f"🔍 Transcribing audio using AI ({whisper_model} model)...")
             transcription_result = transcribe_audio_with_whisper(audio_path, whisper_model, use_cuda)
             full_transcription = transcription_result["text"]
             progress_bar.progress(50)
-            
-            # Initialize video processor
+
             processor = VideoProcessor(output_dir=os.path.join(output_dir, "slides"))
-            
-            # Process video for slides
             status_text.text("🖼️ Extracting slides from video...")
-            
-            # Update processor with user-defined parameters
+
             processor.MIN_PERCENT = min_percent
             processor.MAX_PERCENT = max_percent
-            
+
             slides = processor.process_video(
                 video_path, 
                 transcription_result,
                 progress_callback=lambda p: progress_bar.progress(50 + int(p * 0.4))
             )
-            
-            # Create results package
+
             status_text.text("📦 Creating results package...")
             create_results_package(output_dir, slides, full_transcription)
             progress_bar.progress(100)
-            
-            # Create ZIP file
+
             zip_path = f"{output_dir}.zip"
             shutil.make_archive(os.path.splitext(zip_path)[0], 'zip', os.path.dirname(output_dir), os.path.basename(output_dir))
-            
             status_text.text("✅ Processing complete!")
-            
-            # Display results
+
             if not slides:
                 st.warning("No slides were detected in the video.")
             else:
                 st.success(f"Successfully processed video and extracted {len(slides)} slides!")
-                
-                # Tabs for viewing results
                 results_tab1, results_tab2 = st.tabs(["Slides", "Full Transcription"])
-                
+
                 with results_tab1:
-                    # Display slides
                     for i, slide in enumerate(slides, 1):
                         with st.container():
-                            st.markdown(f"""
-                            <div class="slide-card">
-                                <h4>Slide {i}</h4>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
+                            st.markdown(f"""<div class="slide-card"><h4>Slide {i}</h4></div>""", unsafe_allow_html=True)
                             col1, col2 = st.columns([1, 1])
-                            
                             with col1:
-                                # Use the original image path, not the relative one that's used in the report
                                 image = Image.open(slide['image_path'])
                                 st.image(image, use_container_width=True)
-                            
                             with col2:
                                 st.markdown(f"**Time:** {slide['start_time']} - {slide['end_time']}")
                                 st.markdown(f"**Duration:** {slide['duration']} seconds")
                                 with st.expander("Show Transcription"):
                                     st.write(slide['transcription'])
-                
+
                 with results_tab2:
-                    # Display full transcription without highlights
                     plain_html = full_transcription.replace('\n', '<br>')
-                    
                     st.markdown("<h3>Full Transcription</h3>", unsafe_allow_html=True)
                     st.markdown('<div class="transcript-container">', unsafe_allow_html=True)
                     st.markdown(plain_html, unsafe_allow_html=True)
                     st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Download button
+
             with open(zip_path, 'rb') as f:
                 file_name = f"{video_title.replace(' ', '_')}_analysis_{timestamp}.zip"
                 st.download_button(
@@ -766,14 +701,13 @@ def main():
                     file_name=file_name,
                     mime="application/zip"
                 )
-            
-            # Cleanup temp files
+
             if os.path.exists(audio_path):
                 os.remove(audio_path)
             if video_path and os.path.exists(video_path) and process_youtube:
                 os.remove(video_path)
             processor.cleanup()
-        
+
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
             logger.error(f"Processing error: {e}", exc_info=True)
