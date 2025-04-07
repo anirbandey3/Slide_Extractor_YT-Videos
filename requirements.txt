@@ -3,10 +3,9 @@ opencv-python-headless==4.8.1.78
 numpy==1.26.3
 moviepy==1.0.3
 openai-whisper==20231117
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.1.2
-torchvision==0.16.2
-torchaudio==2.1.2
+torch==2.2.0
+torchvision==0.17.0
+torchaudio==2.2.0
 yt-dlp==2023.12.30
 Pillow==10.2.0
 python-magic==0.4.27
